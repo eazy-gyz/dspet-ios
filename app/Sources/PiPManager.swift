@@ -54,9 +54,15 @@ final class PiPManager: NSObject {
             ? CGRect(x: 0, y: 0, width: 360, height: 203)
             : view.bounds
         layer.videoGravity = .resizeAspect
-        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        // 注意：CALayer.autoresizingMask 是 macOS 专有 API，iOS 上编译不过，
+        // 所以这里手动跟着 view 的尺寸走（见 layout(in:)）
         view.layer.insertSublayer(layer, at: 0)
         playerLayer = layer
+        // 布局完成后补一次尺寸（makeUIView 阶段 bounds 往往是 0）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak view] in
+            guard let view = view else { return }
+            self.layout(in: view)
+        }
 
         let p = AVPlayer()
         p.isMuted = true
