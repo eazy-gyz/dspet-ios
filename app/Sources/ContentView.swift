@@ -52,7 +52,9 @@ struct ContentView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        PiPManager.shared.layout(in: uiView)
+    }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         uiView.configuration.userContentController

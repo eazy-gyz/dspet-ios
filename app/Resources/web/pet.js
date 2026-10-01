@@ -953,7 +953,7 @@
     pipActive = (state === 'active');
     if (!pipBtn) return;
     if (state === 'active')           pipBtn.textContent = '🪟 已浮起';
-    else if (state === 'starting')    pipBtn.textContent = '🪟 启动中…';
+    else if (state === 'starting')    pipBtn.textContent = '🪟 启动中…' + (detail ? ' ' + detail : '');
     else if (state === 'failed')      pipBtn.textContent = '🪟 起不来：' + (detail || '未知原因');
     else if (state === 'unsupported') pipBtn.textContent = '🪟 本机不支持';
     else                              pipBtn.textContent = '🪟 浮到桌面';

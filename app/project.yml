@@ -1,4 +1,4 @@
-name: DSPet
+﻿name: DSPet
 
 options:
   bundleIdPrefix: com.eazygz
@@ -21,7 +21,7 @@ targets:
       - path: Sources
       - path: Resources/Assets.xcassets
         buildPhase: resources
-      # ★ web/ 用 folder 方式整个塞进 bundle（保持目录结构）
+      # 鈽?web/ 鐢?folder 鏂瑰紡鏁翠釜濉炶繘 bundle锛堜繚鎸佺洰褰曠粨鏋勶級
       - path: Resources/web
         type: folder
         buildPhase: resources
@@ -31,7 +31,7 @@ targets:
         PRODUCT_NAME: DSPet
         INFOPLIST_FILE: Sources/Info.plist
         MARKETING_VERSION: "1.1"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "3"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic

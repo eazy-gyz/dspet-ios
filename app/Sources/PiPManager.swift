@@ -5,11 +5,13 @@ import UIKit
 /// 画中画悬浮：让桌宠以「视频小窗」的形式浮在其他 App 上面。
 ///
 /// 原理：iOS 不允许普通 App 造悬浮窗，但允许「画中画」。
-/// 所以这里挂一个 1×1 的隐形 AVPlayerLayer（播放 bundle 里的 HEVC-alpha .mov），
-/// 再挂一个 AVPictureInPictureController —— 按 Home 键时她就会浮起来。
+/// 这里挂一个 AVPlayerLayer（播放 bundle 里的 HEVC-alpha .mov），
+/// 再挂一个 AVPictureInPictureController —— 点按钮或按 Home 时她就浮起来。
 ///
-/// 注意：画中画窗口是系统画的圆角窗，**带自己的背景**，
-/// 所以看起来是「一个小窗里她在动」，不是无缝贴在桌面上。
+/// ⚠️ 关键坑（v1 就是这么失败的）：
+///   刚 replaceCurrentItem 之后 isPictureInPicturePossible 还是 false，
+///   这时候调 startPictureInPicture()，系统**既不启动也不报错**，静默失败。
+///   所以必须 KVO 等它变 true 再起，并且加超时兜底。
 final class PiPManager: NSObject {
 
     static let shared = PiPManager()
@@ -18,39 +20,46 @@ final class PiPManager: NSObject {
     private var playerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var loopObserver: NSObjectProtocol?
+    private var possibleObs: NSKeyValueObservation?
+    private var startTimer: Timer?
 
     /// 当前播放的动画文件名（不带扩展名，比如 a032）
     private(set) var currentFile = "a032"
 
-    /// 通知网页「画中画开了 / 关了 / 失败了」——由 ContentView 注入
-    /// state: starting / active / stopped / failed / unsupported
+    /// 通知网页状态：starting / active / stopped / failed / unsupported
     var onEvent: ((String, String) -> Void)?
-
-    private func emit(_ state: String, _ detail: String = "") {
-        NSLog("DSPet: pip \(state) \(detail)")
-        onEvent?(state, detail)
-    }
 
     private override init() { super.init() }
 
     var isActive: Bool { pipController?.isPictureInPictureActive ?? false }
     var isSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
 
-    // MARK: - 挂到页面视图上（必须在可见窗口里才能起画中画）
+    private func emit(_ state: String, _ detail: String = "") {
+        NSLog("DSPet: pip \(state) \(detail)")
+        DispatchQueue.main.async { [weak self] in
+            self?.onEvent?(state, detail)
+        }
+    }
+
+    // MARK: - 挂到页面视图上
 
     func attach(to view: UIView) {
         guard playerLayer == nil else { return }
 
         let layer = AVPlayerLayer()
-        // 1×1 藏在屏幕左上角：系统要求「图层在可见窗口里」才允许起画中画，
-        // 所以不能设 opacity=0，只能做得足够小
-        layer.frame = CGRect(x: 0, y: 0, width: 2, height: 2)
+        // 铺在网页**下面**（网页本身是整屏不透明背景，所以看不见它），
+        // 但尺寸要足够大 —— 太小的图层系统会认为「没有在可见地播」，不给起画中画。
+        // makeUIView 阶段 bounds 可能还是 0，所以先给个保底尺寸。
+        layer.frame = view.bounds.isEmpty
+            ? CGRect(x: 0, y: 0, width: 360, height: 203)
+            : view.bounds
         layer.videoGravity = .resizeAspect
-        view.layer.addSublayer(layer)
+        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        view.layer.insertSublayer(layer, at: 0)
         playerLayer = layer
 
         let p = AVPlayer()
-        p.isMuted = true             // 画面是桌宠，声音走网页那一套
+        p.isMuted = true
         p.actionAtItemEnd = .none
         player = p
         layer.player = p
@@ -60,19 +69,16 @@ final class PiPManager: NSObject {
             emit("unsupported")
             return
         }
-        // ★ 音频会话要在判断支持之前设好，否则某些系统版本会报「不支持」
+        // ★ 音频会话要在判断支持之前设好
         setupAudioSession()
 
         let c = AVPictureInPictureController(playerLayer: layer)
         c?.delegate = self
-        // v1 先不做「按 Home 自动浮起」—— 手动点按钮更可控，
-        // 免得开关一次窗口后每次回桌面都自己蹦出来
         c?.canStartPictureInPictureAutomaticallyFromInline = false
-        // 去掉快进/快退按钮（她又不是视频）
         c?.requiresLinearPlayback = true
         pipController = c
 
-        NSLog("DSPet: 画中画已就绪，supported=\(isSupported)")
+        NSLog("DSPet: 画中画已就绪 supported=\(isSupported)")
     }
 
     private func setupAudioSession() {
@@ -85,21 +91,25 @@ final class PiPManager: NSObject {
         }
     }
 
+    /// 布局变化时同步一下播放器层的尺寸（由 ContentView.updateUIView 调）
+    func layout(in view: UIView) {
+        guard let layer = playerLayer, !view.bounds.isEmpty else { return }
+        if layer.frame != view.bounds { layer.frame = view.bounds }
+    }
+
     // MARK: - 播放哪一段
 
-    /// 切到某个动画（file 是 aNNN 这种文件名）
     func play(file name: String) {
         currentFile = name
         guard let url = Bundle.main.url(forResource: name,
                                         withExtension: "mov",
                                         subdirectory: "web/assets") else {
-            NSLog("DSPet: 找不到素材 \(name).mov")
+            emit("failed", "找不到素材 \(name).mov")
             return
         }
+        if let ob = loopObserver { NotificationCenter.default.removeObserver(ob) }
         let item = AVPlayerItem(url: url)
         player?.replaceCurrentItem(with: item)
-
-        if let ob = loopObserver { NotificationCenter.default.removeObserver(ob) }
         loopObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
@@ -116,18 +126,51 @@ final class PiPManager: NSObject {
             emit("unsupported")
             return
         }
-        emit("starting")
+        if c.isPictureInPictureActive { return }
+
+        emit("starting", "possible=\(c.isPictureInPicturePossible)")
         play(file: name ?? currentFile)
         setupAudioSession()
-        if !c.isPictureInPictureActive {
-            // 注意：刚 replaceCurrentItem 时 isPictureInPicturePossible 还是 false，
-            // 所以不能拿它当门槛 —— 直接起，失败了代理会回报
-            NSLog("DSPet: 尝试启动画中画（possible=\(c.isPictureInPicturePossible)）")
-            c.startPictureInPicture()
+
+        if c.isPictureInPicturePossible {
+            beginStart(c)
+            return
+        }
+
+        // 等系统说「可以了」
+        possibleObs?.invalidate()
+        possibleObs = c.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] ctrl, change in
+            guard let self = self, change.newValue == true else { return }
+            self.possibleObs?.invalidate()
+            self.possibleObs = nil
+            self.beginStart(ctrl)
+        }
+
+        // 兜底：6 秒还没准备好就明确报错，别让按钮一直「启动中…」
+        startTimer?.invalidate()
+        startTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.possibleObs?.invalidate()
+            self.possibleObs = nil
+            if !(self.pipController?.isPictureInPictureActive ?? false) {
+                self.emit("failed", "系统一直说不能起（视频没解码出来？）")
+            }
         }
     }
 
+    private func beginStart(_ c: AVPictureInPictureController) {
+        startTimer?.invalidate()
+        startTimer = nil
+        guard !c.isPictureInPictureActive else { return }
+        NSLog("DSPet: possible=true，正式起画中画")
+        c.startPictureInPicture()
+    }
+
     func stop() {
+        possibleObs?.invalidate()
+        possibleObs = nil
+        startTimer?.invalidate()
+        startTimer = nil
         pipController?.stopPictureInPicture()
     }
 }
@@ -136,22 +179,31 @@ final class PiPManager: NSObject {
 
 extension PiPManager: AVPictureInPictureControllerDelegate {
 
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        NSLog("DSPet: 画中画将要开始")
+    }
+
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        startTimer?.invalidate()
+        startTimer = nil
         emit("active")
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        // 小窗关掉了就别在后台空转解码
         player?.pause()
         emit("stopped")
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
+        startTimer?.invalidate()
+        startTimer = nil
         emit("failed", error.localizedDescription)
     }
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
-        // 需要实现，否则某些系统版本不给起
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler
+                                    completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(true)
     }
 }
