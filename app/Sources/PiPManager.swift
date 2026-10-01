@@ -36,9 +36,10 @@ final class PiPManager: NSObject {
         guard playerLayer == nil else { return }
 
         let layer = AVPlayerLayer()
-        layer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        // 1×1 藏在屏幕左上角：系统要求「图层在可见窗口里」才允许起画中画，
+        // 所以不能设 opacity=0，只能做得足够小
+        layer.frame = CGRect(x: 0, y: 0, width: 2, height: 2)
         layer.videoGravity = .resizeAspect
-        layer.opacity = 0            // 页面上不露脸，只在画中画里出现
         view.layer.addSublayer(layer)
         playerLayer = layer
 
