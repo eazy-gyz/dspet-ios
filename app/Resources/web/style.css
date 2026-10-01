@@ -1,0 +1,259 @@
+/* ===== ds-pet Demo 样式 ===== */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* ★ 关掉安卓 WebView 的字体自动放大（font boosting）。
+     不关的话 15px 会被撑到 ~23px，气泡又宽又高。 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* 防止触摸被当成页面滚动手势 */
+  touch-action: none;
+  -ms-touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* 桌面背景（深色 —— mix-blend-mode:screen 去黑需要暗底） */
+.desktop {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 25% 15%, #1d2733 0%, transparent 55%),
+    radial-gradient(circle at 75% 85%, #241f33 0%, transparent 55%),
+    #0d1117;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  padding: 20px;
+}
+.hint h1 {
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+.hint p { font-size: 15px; line-height: 1.9; }
+.hint .small {
+  font-size: 12px;
+  margin-top: 10px;
+  opacity: 0.6;
+}
+
+/* ===== 桌宠 ===== */
+.pet {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* 宽高由 JS 设置：size x size*9/16 */
+  will-change: transform;
+  /* 左上角为原点，S.x/S.y 就是宠物本体左上角，和安卓端坐标一致 */
+  transform-origin: top left;
+  cursor: grab;
+  touch-action: none;
+  z-index: 9999;
+  /* 让视频的 alpha 通道正常显示 */
+  background: transparent;
+}
+.pet.dragging { cursor: grabbing; }
+
+/* 宠物本体区域（视频/画布/气泡都挂在它上面）
+ * 网页版：= .pet 尺寸
+ * 安卓版：贴在悬浮窗底部，高度 = 宠物高度，上方留出气泡空间
+ */
+.pet-body {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pet-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* VP9-alpha 透明通道靠这行保证背景透明 */
+  background: transparent;
+  pointer-events: none;
+  /* 抗锯齿，缩放时更平滑 */
+  image-rendering: auto;
+  /* 防止移动端浏览器接管成播放器 */
+  object-fit: contain;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 去黑渲染用的 canvas（WebGL 输出） */
+.pet-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* 关键：不让浏览器把触摸当滚动手势拦截，否则拖不动 */
+  touch-action: none;
+  -ms-touch-action: none;
+}
+
+/* ===== 碎碎念 · 透明云朵气泡 =====
+ * 做法：一个圆角主体 + 几个绝对定位的圆形「鼓包」拼出云朵轮廓。
+ * ★ 云朵内部一律用不透明色，透明度交给整块的 opacity ——
+ *   这样鼓包重叠的地方不会叠加变深（否则会看到一圈圈接缝）。
+ * ★ 所有尺寸用 em，JS 按桌宠大小改 font-size，整朵云就跟着缩放。
+ */
+.bubble {
+  --cloud: #f0f7ff;
+  position: absolute;
+  left: 50%;
+  bottom: 88%;               /* 紧贴头顶：角色头顶大约在画幅 12~16% 处 */
+  width: max-content;
+  max-width: 94%;
+  padding: .58em 1.05em;
+  font-size: 15px;           /* JS 会按桌宠大小改写 */
+  line-height: 1.38;
+  color: #16324a;
+  text-align: center;
+  background: var(--cloud);
+  border-radius: 1.15em;
+  /* ★ 这里绝对不能用 filter: drop-shadow() ——
+     它会把伸到主体边界外的云朵鼓包整块裁掉（实测鼓包全不见了）。
+     用 box-shadow 代替。 */
+  box-shadow: 0 .22em .5em rgba(20, 50, 80, .32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -2px);
+  transform-origin: bottom center;
+  transition: opacity .26s ease, transform .26s ease;
+  z-index: 3;
+}
+.bubble.show {
+  opacity: .94;              /* ← 云朵的「透明」在这儿 */
+  transform: translate(-50%, -8px);
+}
+
+/* ---- 按来源换配色（云朵本身不变，只换色调和文字色）---- */
+.bubble.k-app    { --cloud: #f1f4f9; color: #2b3648; }
+.bubble.k-wechat { --cloud: #e8f9ed; color: #12603a; }
+.bubble.k-qq     { --cloud: #e9f2ff; color: #14417f; }
+.bubble.k-sms    { --cloud: #e8f1ff; color: #1b3f7a; }
+.bubble.k-call   { --cloud: #ffe9ea; color: #8a1f2b; }
+.bubble.k-work   { --cloud: #edefff; color: #33359a; }
+/* 来电最显眼：加一圈红光 */
+.bubble.k-call {
+  box-shadow: 0 .22em .5em rgba(20, 50, 80, .32), 0 0 0 .18em rgba(255, 110, 120, .45);
+}
+
+/* 云朵鼓包 */
+.bubble .p {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--cloud);
+  pointer-events: none;
+}
+.bubble .p1 { left: .05em;   top: -1.45em; width: 1.30em; height: 1.30em; }
+.bubble .p2 { left: 50%; margin-left: -.90em; top: -2.10em; width: 1.80em; height: 1.80em; }
+.bubble .p3 { right: .05em;  top: -1.40em; width: 1.25em; height: 1.25em; }
+.bubble .p4 { left: -.55em;  top: .45em;   width: 1.20em; height: 1.20em; }
+.bubble .p5 { right: -.55em; top: .50em;   width: 1.15em; height: 1.15em; }
+
+/* 云朵小尾巴（指向头顶） */
+.bubble::after {
+  content: '';
+  position: absolute;
+  left: 32%;
+  top: 94%;
+  width: .60em;
+  height: .60em;
+  border-radius: 50%;
+  background: var(--cloud);
+  box-shadow: -.85em .78em 0 -.13em var(--cloud);
+}
+
+.bubble-text {
+  display: block;
+  position: relative;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ===== 去黑处理（网页模式兜底）=====
+ * 原版 WebM 是「纯黑底 + 无 alpha 通道」(yuv420p)。
+ * 网页模式用 mix-blend-mode:screen 把黑色"挖掉"；
+ * 安卓悬浮窗模式由 WebGL 实时处理（见 pet.js）。
+ */
+.pet .pet-video {
+  mix-blend-mode: screen;
+  transition: opacity .2s ease;
+}
+.pet.no-blend .pet-video {
+  mix-blend-mode: normal;
+}
+
+/* WebGL 去黑生效时，隐藏原始视频，只显示 canvas 的结果 */
+.pet.gl .pet-video {
+  opacity: 0;
+}
+.pet.gl.no-blend .pet-video {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+/* ★ 原生 alpha 生效时：直接显示视频本身，canvas 完全不用（任何机型都不会有描边） */
+.pet.native .pet-video {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+.pet.native .pet-canvas {
+  display: none;
+}
+
+/* 朝向翻转（东张西望后转身） */
+.pet.flip .pet-video,
+.pet.flip .pet-canvas {
+  transform: scaleX(-1);
+}
+
+/* ===== 调试面板 ===== */
+.debug {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #cfe3ff;
+  font-size: 12px;
+  line-height: 1.8;
+  font-family: ui-monospace, Consolas, monospace;
+  z-index: 10001;
+  min-width: 150px;
+}
+.debug.hidden .debug-row { display: none; }
+.debug-row { display: flex; justify-content: space-between; gap: 14px; }
+.debug-row span { opacity: 0.6; }
+.debug-row b { color: #7fd3ff; font-weight: 600; }
+.debug button {
+  margin-top: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid rgba(127, 211, 255, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: #7fd3ff;
+  font-size: 11px;
+  cursor: pointer;
+}
+.debug button:hover { background: rgba(127, 211, 255, 0.15); }

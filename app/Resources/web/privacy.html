@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DS桌宠 隐私政策</title>
+<style>
+  :root{--fg:#1b2432;--dim:#6b7a8f;--line:#e3e9f0;--accent:#2e7dd1;--warn:#fff7e6;--warnline:#ffd591;}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:20px 18px 48px;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       color:var(--fg);background:#f2f5f9;line-height:1.85;font-size:15px;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;padding:22px 20px 30px;
+        box-shadow:0 2px 10px rgba(20,50,80,.06);}
+  h1{font-size:21px;margin:0 0 6px;}
+  h2{font-size:16px;margin:26px 0 8px;padding-left:9px;border-left:3px solid var(--accent);}
+  .meta{color:var(--dim);font-size:13px;margin-bottom:18px;}
+  .hl{background:var(--warn);border:1px solid var(--warnline);border-radius:10px;padding:12px 14px;margin:16px 0;}
+  .hl b{color:#a35b00;}
+  ul{padding-left:20px;margin:8px 0;}
+  li{margin:5px 0;}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px;}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:#f7f9fc;font-weight:600;}
+  code{background:#f2f5f9;border-radius:4px;padding:1px 5px;font-size:13px;}
+  .ph{background:#fff1f0;color:#cf1322;border-radius:4px;padding:1px 5px;font-weight:600;}
+  footer{margin-top:28px;color:var(--dim);font-size:13px;border-top:1px solid var(--line);padding-top:14px;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>DS桌宠 隐私政策</h1>
+  <div class="meta">更新日期：2026年9月30日　·　生效日期：2026年9月30日　·　适用版本：v1.1 及以后</div>
+
+  <div class="hl">
+    <b>一句话说明：DS桌宠不申请「网络访问」权限。</b><br>
+    本应用没有任何联网能力，无法上传任何数据 —— 这是可以在系统「应用信息 → 权限」里核实的。
+  </div>
+
+  <h2>一、我们收集哪些信息</h2>
+  <p><b>不收集任何个人信息。</b></p>
+  <ul>
+    <li>不申请网络权限，技术上不具备上传能力；</li>
+    <li>不申请位置、通讯录、短信、相机、麦克风、存储等敏感权限；</li>
+    <li>不采集设备标识（IMEI / OAID / Android ID 等）；</li>
+    <li>不集成任何统计、广告、推送类 SDK。</li>
+  </ul>
+
+  <h2>二、申请的权限及用途</h2>
+  <p>为实现桌面宠物这一核心功能，本应用会申请以下权限，全部仅在您的设备本地使用：</p>
+  <table>
+    <tr><th>权限</th><th>用来做什么</th><th>是否上传</th></tr>
+    <tr>
+      <td><b>悬浮窗</b><br><code>SYSTEM_ALERT_WINDOW</code></td>
+      <td>让桌宠以悬浮窗的形式待在桌面上。这是本应用的核心形态，不申请就无法使用。</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><b>通知使用权</b><br><code>NotificationListenerService</code></td>
+      <td>读取通知的标题与来源应用名称，让桌宠在头顶冒泡播报。所有内容仅在本机内存中瞬时处理，<b>不保存、不记录、不上传</b>。您可随时在「系统设置 → 通知 → 通知使用权」中关闭。</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><b>通知</b><br><code>POST_NOTIFICATIONS</code></td>
+      <td>显示「桌宠运行中」的常驻通知，用于保持桌宠存活。</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><b>软件包可见性</b><br><code>QUERY_ALL_PACKAGES</code></td>
+      <td>把通知的来源应用显示成正确的名称与图标（否则只能显示包名）。不读取应用清单以外的任何内容。</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><b>前台服务</b><br><code>FOREGROUND_SERVICE</code></td>
+      <td>让桌宠在后台稳定运行，避免被系统回收。</td>
+      <td>否</td>
+    </tr>
+    <tr>
+      <td><b>加速度传感器</b><br>（无需授权）</td>
+      <td>用于「摇一摇」甩动桌宠的互动效果。仅在本地实时判断晃动，<b>不采集、不存储、不上传</b>。</td>
+      <td>否</td>
+    </tr>
+  </table>
+
+  <h2>三、信息的存储</h2>
+  <ul>
+    <li>您的设置项（桌宠大小、动作频率、各类开关等）保存在设备本地的应用私有目录中；</li>
+    <li>卸载本应用后，上述数据随应用一并删除；</li>
+    <li>本应用不设服务器，因此不存在账号体系，也没有「导出 / 删除个人数据」的流程；</li>
+    <li>桌宠的动画与语音均为随安装包内置的本地文件，不会下载、不会上传。</li>
+  </ul>
+
+  <h2>四、信息的对外提供</h2>
+  <p>由于不收集任何信息，<b>不存在向任何第三方提供、共享、转让或公开披露信息的情形</b>。</p>
+
+  <h2>五、第三方 SDK</h2>
+  <p><b>本应用未集成任何第三方 SDK</b>（不含统计、广告、崩溃上报、推送等服务）。</p>
+
+  <h2>六、未成年人保护</h2>
+  <p>本应用不收集任何个人信息，未成年人可以正常使用。若监护人对其使用有疑问，可通过下方联系方式与我们联系。</p>
+
+  <h2>七、权限的关闭方式</h2>
+  <ul>
+    <li><b>悬浮窗</b>：系统设置 → 应用 → DS桌宠 → 显示在其他应用上层</li>
+    <li><b>通知使用权</b>：系统设置 → 通知 → 通知使用权 → DS桌宠</li>
+    <li><b>所有权限</b>：也可以直接在应用「设置」页点击「收回桌宠」后，于系统设置中关闭</li>
+  </ul>
+  <p>关闭相关权限后，对应功能将不可用，但不会影响其他功能，也不会影响本政策承诺。</p>
+
+  <h2>八、本政策的变更</h2>
+  <p>如本政策发生变更，我们会在应用内与本页面同步更新，并更新顶部的「更新日期」。重大变更会在应用内以弹窗形式再次向您告知。</p>
+
+  <h2>九、联系我们</h2>
+  <ul>
+    <li>开发者：<span class="ph">【请填写：个人开发者真实姓名】</span></li>
+    <li>联系邮箱：<span class="ph">【请填写：常用邮箱】</span></li>
+    <li>应用备案号：<span class="ph">【备案通过后填写】</span></li>
+  </ul>
+
+  <footer>
+    DS桌宠 · 一款不需要联网的桌面小宠物。<br>
+    本政策适用于 Android 版 DS桌宠。
+  </footer>
+
+</div>
+</body>
+</html>

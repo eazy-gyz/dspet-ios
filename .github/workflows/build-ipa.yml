@@ -1,0 +1,79 @@
+name: Build unsigned IPA
+
+# 没有 Mac 也能编 iOS：借 GitHub 免费的 macOS 机器跑 Xcode，
+# 产出「未签名 IPA」，再用 AltStore / SideStore 用自己的 Apple ID 签名装进手机。
+#
+# 仓库里不放那 80MB 透明视频：编译时直接从 dsh-pet 的官方素材包下载，
+# 再用 tools/prepare_assets.py 映射成 aNNN.mov。这样仓库只有几 MB，push 飞快。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: 取出代码
+        uses: actions/checkout@v4
+
+      - name: 显示环境
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: 下载透明视频素材（dsh-pet 官方素材包）
+        run: |
+          curl -L --retry 5 --retry-delay 3 -o "$RUNNER_TEMP/mov.zip" \
+            https://github.com/PC2005-cloud/dsh-pet/releases/download/assets-mov/dsh-pet-mov-assets-mov.zip
+          ls -lh "$RUNNER_TEMP/mov.zip"
+
+      - name: 映射成 aNNN.mov
+        run: python3 tools/prepare_assets.py "$RUNNER_TEMP/mov.zip"
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        working-directory: app
+        run: xcodegen generate
+
+      - name: 编译（不签名）
+        working-directory: app
+        run: |
+          xcodebuild \
+            -project DSPet.xcodeproj \
+            -scheme DSPet \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 打包成未签名 IPA
+        working-directory: app
+        run: |
+          APP="build/Build/Products/Release-iphoneos/DSPet.app"
+          echo "== App 内容 =="
+          du -sh "$APP"
+          ls "$APP"
+          echo "-- web/assets 计数 --"
+          ls "$APP/web/assets" | wc -l
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry DSPet-unsigned.ipa Payload
+          ls -lh DSPet-unsigned.ipa
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSPet-unsigned-ipa
+          path: app/DSPet-unsigned.ipa
+          retention-days: 14
+          compression-level: 0

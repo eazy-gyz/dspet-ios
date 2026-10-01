@@ -1,0 +1,15 @@
+{
+  "name": "DS桌宠",
+  "short_name": "DS桌宠",
+  "description": "零联网的可爱桌面小宠物",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eaf2fb",
+  "theme_color": "#eaf2fb",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

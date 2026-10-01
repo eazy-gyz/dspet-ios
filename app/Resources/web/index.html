@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>DS桌宠</title>
+
+<!-- ===== 让「添加到主屏幕」后变成全屏 App 的样子 ===== -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DS桌宠">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#eaf2fb">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="apple-touch-icon.png">
+
+<link rel="stylesheet" href="style.css">
+<!-- ★ iOS 专用覆盖（浅色底 + 隐藏 Web 版的暗色桌面层） -->
+<link rel="stylesheet" href="ios.css">
+</head>
+<body>
+
+  <!-- 桌面背景层（iOS 上由 ios.css 换成浅色渐变） -->
+  <div class="desktop"></div>
+
+  <!-- 桌宠容器 -->
+  <div id="pet" class="pet">
+    <div id="petBody" class="pet-body">
+      <!-- poster 用 1x1 透明 GIF：不加的话，换动画的一瞬间会闪一下播放按钮占位图 -->
+      <video id="petVideo" class="pet-video"
+             poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+             muted playsinline autoplay loop
+             webkit-playsinline
+             disablepictureinpicture
+             controlslist="nodownload nofullscreen noremoteplayback"
+             preload="auto"></video>
+
+      <!-- 碎碎念气泡：透明云朵（鼓包用绝对定位，不占布局高度） -->
+      <div id="bubble" class="bubble">
+        <i class="p p1"></i><i class="p p2"></i><i class="p p3"></i>
+        <i class="p p4"></i><i class="p p5"></i>
+        <div id="bubbleText" class="bubble-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 首次进入的小提示，看几秒自己淡出 -->
+  <div class="hint" id="hint">
+    <p>拖一拖她 · 双击戳一下</p>
+    <p class="small">摸她一下就会出声（iOS 规定要先有个操作）</p>
+  </div>
+
+  <script src="pet.js"></script>
+</body>
+</html>
