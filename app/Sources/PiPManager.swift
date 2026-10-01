@@ -4,24 +4,28 @@ import UIKit
 
 /// 画中画悬浮：让桌宠以「视频小窗」的形式浮在其他 App 上面。
 ///
-/// 原理：iOS 不允许普通 App 造悬浮窗，但允许「画中画」。
-/// 这里挂一个 AVPlayerLayer（播放 bundle 里的 HEVC-alpha .mov），
-/// 再挂一个 AVPictureInPictureController —— 点按钮或按 Home 时她就浮起来。
-///
-/// ⚠️ 关键坑（v1 就是这么失败的）：
-///   刚 replaceCurrentItem 之后 isPictureInPicturePossible 还是 false，
-///   这时候调 startPictureInPicture()，系统**既不启动也不报错**，静默失败。
-///   所以必须 KVO 等它变 true 再起，并且加超时兜底。
+/// 关键点（都是踩坑踩出来的）：
+///  1. iOS 不允许普通 App 造悬浮窗，只有「画中画」能浮起来
+///  2. 刚换上视频时 `isPictureInPicturePossible` 还是 false，
+///     这时候调 `startPictureInPicture()` 系统会**静默忽略** —— 必须 KVO 等它变 true
+///  3. 画中画窗口是**系统画的不透明窗**，视频里的 alpha 不会被合成 →
+///     所以 PiP 单独用一套**带背景**的小视频（web/pip/*.mp4），不是那套透明的 .mov
+///  4. 靠「播完通知」重播在后台不稳，改用官方的 **AVPlayerLooper** 做无缝循环
 final class PiPManager: NSObject {
 
     static let shared = PiPManager()
 
-    private var player: AVPlayer?
+    private var queuePlayer: AVQueuePlayer?
     private var playerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
-    private var loopObserver: NSObjectProtocol?
     private var possibleObs: NSKeyValueObservation?
     private var startTimer: Timer?
+    private var looper: AVPlayerLooper?
+    private var rotateTimer: Timer?
+
+    /// PiP 专用的那套小视频（带背景）
+    private var playlist: [String] = []
+    private var playlistIndex = 0
 
     /// 当前播放的动画文件名（不带扩展名，比如 a032）
     private(set) var currentFile = "a032"
@@ -53,35 +57,31 @@ final class PiPManager: NSObject {
         guard playerLayer == nil else { return }
 
         let layer = AVPlayerLayer()
-        // 铺在网页**下面**（网页本身是整屏不透明背景，所以看不见它），
-        // 但尺寸要足够大 —— 太小的图层系统会认为「没有在可见地播」，不给起画中画。
-        // makeUIView 阶段 bounds 可能还是 0，所以先给个保底尺寸。
+        // 铺在网页下面（网页是整屏不透明背景，看不见它），但尺寸要够大，
+        // 太小的图层系统会认为「没有在可见地播」，不给起画中画
         layer.frame = view.bounds.isEmpty
             ? CGRect(x: 0, y: 0, width: 360, height: 203)
             : view.bounds
         layer.videoGravity = .resizeAspect
-        // 注意：CALayer.autoresizingMask 是 macOS 专有 API，iOS 上编译不过，
-        // 所以这里手动跟着 view 的尺寸走（见 layout(in:)）
         view.layer.insertSublayer(layer, at: 0)
         playerLayer = layer
-        // 布局完成后补一次尺寸（makeUIView 阶段 bounds 往往是 0）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak view] in
             guard let view = view else { return }
             self.layout(in: view)
         }
 
-        let p = AVPlayer()
+        // ★ AVQueuePlayer 是 AVPlayerLooper 的前提
+        let p = AVQueuePlayer()
         p.isMuted = true
-        p.actionAtItemEnd = .none
-        player = p
+        queuePlayer = p
         layer.player = p
 
+        buildPlaylist()
+
         guard isSupported else {
-            NSLog("DSPet: 这台设备不支持画中画")
             emit("unsupported")
             return
         }
-        // ★ 音频会话要在判断支持之前设好
         setupAudioSession()
 
         let c = AVPictureInPictureController(playerLayer: layer)
@@ -93,8 +93,17 @@ final class PiPManager: NSObject {
         c?.requiresLinearPlayback = true
         pipController = c
 
-        NSLog("DSPet: 画中画已就绪 supported=\(isSupported)")
-        emit("ready", "图层 \(Int(layer.frame.width))x\(Int(layer.frame.height)) · 控制器=\(c != nil)")
+        emit("ready", "PiP素材 \(playlist.count) 个 · 图层 \(Int(layer.frame.width))x\(Int(layer.frame.height))")
+    }
+
+    /// 收集 web/pip/*.mp4 作为 PiP 的动画池
+    private func buildPlaylist() {
+        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("web/pip") else { return }
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?
+            .filter { $0.hasSuffix(".mp4") }
+            .map { String($0.dropLast(4)) } ?? []
+        playlist = names.shuffled()
+        NSLog("DSPet: PiP 素材 \(playlist.count) 个")
     }
 
     private func setupAudioSession() {
@@ -107,32 +116,54 @@ final class PiPManager: NSObject {
         }
     }
 
-    /// 布局变化时同步一下播放器层的尺寸（由 ContentView.updateUIView 调）
+    /// 布局变化时同步播放器层尺寸
     func layout(in view: UIView) {
         guard let layer = playerLayer, !view.bounds.isEmpty else { return }
         if layer.frame != view.bounds { layer.frame = view.bounds }
     }
 
-    // MARK: - 播放哪一段
+    // MARK: - 播放
+
+    private func pipURL(_ name: String) -> URL? {
+        // 优先用带背景的 PiP 专用视频
+        if let u = Bundle.main.url(forResource: name, withExtension: "mp4", subdirectory: "web/pip") {
+            return u
+        }
+        // 兜底：透明 mov
+        return Bundle.main.url(forResource: name, withExtension: "mov", subdirectory: "web/assets")
+    }
 
     func play(file name: String) {
         currentFile = name
-        guard let url = Bundle.main.url(forResource: name,
-                                        withExtension: "mov",
-                                        subdirectory: "web/assets") else {
-            emit("failed", "找不到素材 \(name).mov")
+        guard let url = pipURL(name), let p = queuePlayer else {
+            emit("failed", "找不到素材 \(name)")
             return
         }
-        if let ob = loopObserver { NotificationCenter.default.removeObserver(ob) }
         let item = AVPlayerItem(url: url)
-        player?.replaceCurrentItem(with: item)
-        loopObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-        ) { [weak self] _ in
-            self?.player?.seek(to: .zero)
-            self?.player?.play()
+        p.removeAllItems()
+        // ★ AVPlayerLooper：官方无缝循环，不依赖播完通知
+        looper = AVPlayerLooper(player: p, templateItem: item)
+        p.play()
+    }
+
+    private func playNextFromPlaylist() {
+        guard !playlist.isEmpty else { return }
+        playlistIndex = (playlistIndex + 1) % playlist.count
+        play(file: playlist[playlistIndex])
+    }
+
+    /// 每 12 秒换一个动作，让小窗里的她"活着"
+    private func startRotation() {
+        rotateTimer?.invalidate()
+        rotateTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in
+            guard let self = self, self.isActive else { return }
+            self.playNextFromPlaylist()
         }
-        player?.play()
+    }
+
+    private func stopRotation() {
+        rotateTimer?.invalidate()
+        rotateTimer = nil
     }
 
     // MARK: - 开关
@@ -146,7 +177,7 @@ final class PiPManager: NSObject {
 
         let lw = Int(playerLayer?.frame.width ?? 0)
         let lh = Int(playerLayer?.frame.height ?? 0)
-        emit("starting", "possible=\(c.isPictureInPicturePossible) 图层=\(lw)x\(lh)")
+        emit("starting", "possible=\(c.isPictureInPicturePossible) 图层=\(lw)x\(lh) 素材=\(playlist.count)")
         play(file: name ?? currentFile)
         setupAudioSession()
 
@@ -155,7 +186,6 @@ final class PiPManager: NSObject {
             return
         }
 
-        // 等系统说「可以了」
         possibleObs?.invalidate()
         possibleObs = c.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] ctrl, change in
             guard let self = self, change.newValue == true else { return }
@@ -164,15 +194,14 @@ final class PiPManager: NSObject {
             self.beginStart(ctrl)
         }
 
-        // 兜底：6 秒还没准备好就明确报错，别让按钮一直「启动中…」
         startTimer?.invalidate()
         startTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             self.possibleObs?.invalidate()
             self.possibleObs = nil
             if !(self.pipController?.isPictureInPictureActive ?? false) {
-                let p = self.player
-                self.emit("failed", "6 秒还没就绪 · 视频宽=\(p?.currentItem?.presentationSize.width ?? 0) 状态=\(p?.currentItem?.status.rawValue ?? -1) 播放中=\(p?.rate ?? 0)")
+                let it = self.queuePlayer?.currentItem
+                self.emit("failed", "6 秒还没就绪 · 尺寸=\(it?.presentationSize.width ?? 0)x\(it?.presentationSize.height ?? 0) 状态=\(it?.status.rawValue ?? -1)")
             }
         }
     }
@@ -186,10 +215,9 @@ final class PiPManager: NSObject {
     }
 
     func stop() {
-        possibleObs?.invalidate()
-        possibleObs = nil
-        startTimer?.invalidate()
-        startTimer = nil
+        possibleObs?.invalidate(); possibleObs = nil
+        startTimer?.invalidate(); startTimer = nil
+        stopRotation()
         pipController?.stopPictureInPicture()
     }
 }
@@ -205,11 +233,13 @@ extension PiPManager: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         startTimer?.invalidate()
         startTimer = nil
-        emit("active")
+        emit("active", "她在小窗里了")
+        startRotation()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        player?.pause()
+        queuePlayer?.pause()
+        stopRotation()
         emit("stopped")
     }
 

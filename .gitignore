@@ -1,6 +1,7 @@
 # ---- 本地开发/测试用的东西，不进仓库 ----
 *.zip
 *.mp4
+!app/Resources/web/pip/*.mp4
 _shots/
 _chk_*.png
 推送.ps1
