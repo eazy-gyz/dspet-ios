@@ -5,11 +5,18 @@ name: Build unsigned IPA
 #
 # 仓库里不放那 80MB 透明视频：编译时直接从 dsh-pet 的官方素材包下载，
 # 再用 tools/prepare_assets.py 映射成 aNNN.mov。这样仓库只有几 MB，push 飞快。
+#
+# 每次推送都会：
+#   1) 产出一个 Artifact（需要登录才能下）
+#   2) 发布到 Release（不用登录，可以走 ghfast.top 之类的国内镜像全速下载）
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -70,10 +77,21 @@ jobs:
           zip -qry DSPet-unsigned.ipa Payload
           ls -lh DSPet-unsigned.ipa
 
-      - name: 上传 IPA
+      - name: 上传 IPA（Artifact）
         uses: actions/upload-artifact@v4
         with:
           name: DSPet-unsigned-ipa
           path: app/DSPet-unsigned.ipa
           retention-days: 14
           compression-level: 0
+
+      # ★ Release 的下载链接不用登录，于是可以套国内加速镜像全速拉；
+      #   浏览器里直接下 Artifact 在国内经常只有几十 KB/s。
+      - name: 发布到 Release（方便国内加速下载）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest app/DSPet-unsigned.ipa --title "DS桌宠 iOS 最新版（未签名 IPA）" --notes "由 GitHub Actions 自动构建，用 AltStore / SideStore 签名安装。国内加速：在下载地址前面加上 https://ghfast.top/ 即可。"
+          echo "=== Release 已发布 ==="
+          gh release view latest --json url,assets --jq '.url, (.assets[] | "\(.name)  \(.size) bytes")'
