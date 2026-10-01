@@ -3,6 +3,7 @@
 *.mp4
 _shots/
 _chk_*.png
+推送.ps1
 
 # ---- 80MB 透明视频不进仓库：CI 编译前用 tools/prepare_assets.py 现生成 ----
 app/Resources/web/assets/*.mov
