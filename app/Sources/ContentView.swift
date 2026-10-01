@@ -29,8 +29,8 @@ struct ContentView: UIViewRepresentable {
 
         // ★ 画中画：在页面视图上挂一个隐形的播放器层
         PiPManager.shared.attach(to: webView)
-        PiPManager.shared.onStateChanged = { [weak webView] active in
-            let js = "window.__pipState && window.__pipState(\(active ? "true" : "false"))"
+        PiPManager.shared.onEvent = { [weak webView] state, detail in
+            let js = "window.__pipState && window.__pipState(\(jsString(state)), \(jsString(detail)))"
             DispatchQueue.main.async {
                 webView?.evaluateJavaScript(js) { _, err in
                     if let err = err { NSLog("DSPet: pipState js error \(err)") }
@@ -58,6 +58,13 @@ struct ContentView: UIViewRepresentable {
         uiView.configuration.userContentController
             .removeScriptMessageHandler(forName: "pip")
     }
+}
+
+/// 把 Swift 字符串安全地塞进 JS（用 JSON 编码，转义引号 / 换行 / emoji）
+func jsString(_ s: String) -> String {
+    guard let data = try? JSONEncoder().encode(s),
+          let text = String(data: data, encoding: .utf8) else { return "\"\"" }
+    return text
 }
 
 /// 接收网页发来的画中画指令

@@ -22,8 +22,14 @@ final class PiPManager: NSObject {
     /// 当前播放的动画文件名（不带扩展名，比如 a032）
     private(set) var currentFile = "a032"
 
-    /// 通知网页「画中画开了 / 关了」——由 ContentView 注入
-    var onStateChanged: ((Bool) -> Void)?
+    /// 通知网页「画中画开了 / 关了 / 失败了」——由 ContentView 注入
+    /// state: starting / active / stopped / failed / unsupported
+    var onEvent: ((String, String) -> Void)?
+
+    private func emit(_ state: String, _ detail: String = "") {
+        NSLog("DSPet: pip \(state) \(detail)")
+        onEvent?(state, detail)
+    }
 
     private override init() { super.init() }
 
@@ -51,17 +57,21 @@ final class PiPManager: NSObject {
 
         guard isSupported else {
             NSLog("DSPet: 这台设备不支持画中画")
+            emit("unsupported")
             return
         }
+        // ★ 音频会话要在判断支持之前设好，否则某些系统版本会报「不支持」
+        setupAudioSession()
+
         let c = AVPictureInPictureController(playerLayer: layer)
         c?.delegate = self
-        // 按 Home 键自动浮起来
-        c?.canStartPictureInPictureAutomaticallyFromInline = true
+        // v1 先不做「按 Home 自动浮起」—— 手动点按钮更可控，
+        // 免得开关一次窗口后每次回桌面都自己蹦出来
+        c?.canStartPictureInPictureAutomaticallyFromInline = false
         // 去掉快进/快退按钮（她又不是视频）
         c?.requiresLinearPlayback = true
         pipController = c
 
-        setupAudioSession()
         NSLog("DSPet: 画中画已就绪，supported=\(isSupported)")
     }
 
@@ -103,12 +113,16 @@ final class PiPManager: NSObject {
 
     func start(file name: String? = nil) {
         guard isSupported, let c = pipController else {
-            NSLog("DSPet: 画中画不可用")
+            emit("unsupported")
             return
         }
+        emit("starting")
         play(file: name ?? currentFile)
         setupAudioSession()
         if !c.isPictureInPictureActive {
+            // 注意：刚 replaceCurrentItem 时 isPictureInPicturePossible 还是 false，
+            // 所以不能拿它当门槛 —— 直接起，失败了代理会回报
+            NSLog("DSPet: 尝试启动画中画（possible=\(c.isPictureInPicturePossible)）")
             c.startPictureInPicture()
         }
     }
@@ -123,19 +137,18 @@ final class PiPManager: NSObject {
 extension PiPManager: AVPictureInPictureControllerDelegate {
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
-        NSLog("DSPet: 画中画已开始")
-        onStateChanged?(true)
+        emit("active")
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        NSLog("DSPet: 画中画已结束")
-        onStateChanged?(false)
+        // 小窗关掉了就别在后台空转解码
+        player?.pause()
+        emit("stopped")
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
-        NSLog("DSPet: 画中画启动失败 \(error)")
-        onStateChanged?(false)
+        emit("failed", error.localizedDescription)
     }
 
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
