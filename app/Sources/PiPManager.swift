@@ -28,6 +28,10 @@ final class PiPManager: NSObject {
 
     /// 通知网页状态：starting / active / stopped / failed / unsupported
     var onEvent: ((String, String) -> Void)?
+    /// 通知原生调试面板（RootView）
+    var onEventUI: ((String, String) -> Void)?
+    /// 最近一次事件（面板 onAppear 时补读，因为 attach 阶段面板还没挂上）
+    private(set) var lastEvent: (String, String) = ("", "")
 
     private override init() { super.init() }
 
@@ -36,8 +40,10 @@ final class PiPManager: NSObject {
 
     private func emit(_ state: String, _ detail: String = "") {
         NSLog("DSPet: pip \(state) \(detail)")
+        lastEvent = (state, detail)
         DispatchQueue.main.async { [weak self] in
             self?.onEvent?(state, detail)
+            self?.onEventUI?(state, detail)
         }
     }
 
@@ -79,12 +85,16 @@ final class PiPManager: NSObject {
         setupAudioSession()
 
         let c = AVPictureInPictureController(playerLayer: layer)
+        if c == nil {
+            emit("failed", "控制器创建失败（图层 \(Int(layer.frame.width))x\(Int(layer.frame.height))）")
+        }
         c?.delegate = self
         c?.canStartPictureInPictureAutomaticallyFromInline = false
         c?.requiresLinearPlayback = true
         pipController = c
 
         NSLog("DSPet: 画中画已就绪 supported=\(isSupported)")
+        emit("ready", "图层 \(Int(layer.frame.width))x\(Int(layer.frame.height)) · 控制器=\(c != nil)")
     }
 
     private func setupAudioSession() {
@@ -129,12 +139,14 @@ final class PiPManager: NSObject {
 
     func start(file name: String? = nil) {
         guard isSupported, let c = pipController else {
-            emit("unsupported")
+            emit("failed", "不可用 supported=\(isSupported) controller=\(pipController != nil)")
             return
         }
         if c.isPictureInPictureActive { return }
 
-        emit("starting", "possible=\(c.isPictureInPicturePossible)")
+        let lw = Int(playerLayer?.frame.width ?? 0)
+        let lh = Int(playerLayer?.frame.height ?? 0)
+        emit("starting", "possible=\(c.isPictureInPicturePossible) 图层=\(lw)x\(lh)")
         play(file: name ?? currentFile)
         setupAudioSession()
 
@@ -159,7 +171,8 @@ final class PiPManager: NSObject {
             self.possibleObs?.invalidate()
             self.possibleObs = nil
             if !(self.pipController?.isPictureInPictureActive ?? false) {
-                self.emit("failed", "系统一直说不能起（视频没解码出来？）")
+                let p = self.player
+                self.emit("failed", "6 秒还没就绪 · 视频宽=\(p?.currentItem?.presentationSize.width ?? 0) 状态=\(p?.currentItem?.status.rawValue ?? -1) 播放中=\(p?.rate ?? 0)")
             }
         }
     }
