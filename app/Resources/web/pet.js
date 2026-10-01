@@ -557,6 +557,9 @@
     }
     S.current = name;
 
+    // ★ 原生 App：画中画开着的话，让小窗里的她也跟着换动作
+    if (pipActive) pipSend({ cmd: 'play', anim: (NAME_MAP[name] || name) });
+
     if (endHandler) { video.removeEventListener('ended', endHandler); endHandler = null; }
 
     video.loop = !!opts.loop;
@@ -930,6 +933,33 @@
         goIdle();
       }
     };
+  }
+
+  // ---------- ★ 原生 App：画中画悬浮 ----------
+  //   只有被原生外壳（WKSchemeHandler: pip）包起来时才存在这个桥。
+  //   网页版 / Safari 里不会有按钮。
+  var PIP = (window.webkit && window.webkit.messageHandlers
+             && window.webkit.messageHandlers.pip) || null;
+  var pipActive = false;
+  var pipBtn = document.getElementById('pipBtn');
+
+  function pipSend(obj) {
+    if (!PIP) return;
+    try { PIP.postMessage(obj); } catch (e) {}
+  }
+
+  /** 原生告诉我们画中画开了 / 关了 */
+  window.__pipState = function (active) {
+    pipActive = !!active;
+    if (pipBtn) pipBtn.textContent = pipActive ? '🪟 已浮起' : '🪟 浮到桌面';
+  };
+
+  if (PIP && pipBtn) {
+    pipBtn.style.display = 'block';
+    pipBtn.addEventListener('click', function () {
+      if (pipActive) { pipSend({ cmd: 'stop' }); return; }
+      pipSend({ cmd: 'start', anim: NAME_MAP[S.current] || 'a032' });
+    });
   }
 
   // ---------- 主循环 ----------

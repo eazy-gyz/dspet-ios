@@ -52,3 +52,27 @@ html:not(.dark-desk) .hint {
   75%  { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* ---------- ★ 原生 App 专用：画中画悬浮按钮 ---------- */
+.pip-btn {
+  position: fixed;
+  right: calc(env(safe-area-inset-right) + 14px);
+  top: calc(env(safe-area-inset-top) + 14px);
+  z-index: 60;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 999px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #fff;
+  background: rgba(46, 125, 209, 0.92);
+  box-shadow: 0 4px 14px rgba(30, 70, 120, 0.28);
+  -webkit-tap-highlight-color: transparent;
+}
+.pip-btn:active {
+  background: rgba(31, 99, 172, 0.95);
+}
+html.dark-desk .pip-btn {
+  background: rgba(127, 211, 255, 0.92);
+  color: #0d1117;
+}

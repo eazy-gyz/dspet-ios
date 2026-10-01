@@ -1,8 +1,11 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 
 /// 承载网页版桌宠的全屏 WKWebView
 struct ContentView: UIViewRepresentable {
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
         let cfg = WKWebViewConfiguration()
@@ -12,8 +15,8 @@ struct ContentView: UIViewRepresentable {
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.allowsPictureInPictureMediaPlayback = true
 
-        // 背景透明，露出下层（以后给画中画 / 小组件用）
-        cfg.suppressesIncrementalRendering = false
+        // ★ 网页 → 原生：画中画指令（window.webkit.messageHandlers.pip.postMessage）
+        cfg.userContentController.add(context.coordinator, name: "pip")
 
         let webView = WKWebView(frame: .zero, configuration: cfg)
         webView.isOpaque = false
@@ -23,6 +26,17 @@ struct ContentView: UIViewRepresentable {
         webView.scrollView.bounces = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsBackForwardNavigationGestures = false
+
+        // ★ 画中画：在页面视图上挂一个隐形的播放器层
+        PiPManager.shared.attach(to: webView)
+        PiPManager.shared.onStateChanged = { [weak webView] active in
+            let js = "window.__pipState && window.__pipState(\(active ? "true" : "false"))"
+            DispatchQueue.main.async {
+                webView?.evaluateJavaScript(js) { _, err in
+                    if let err = err { NSLog("DSPet: pipState js error \(err)") }
+                }
+            }
+        }
 
         // 优先走本地 http（和 Safari 实测通过的路径一模一样）
         LocalServer.shared.start()
@@ -39,4 +53,30 @@ struct ContentView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(forName: "pip")
+    }
+}
+
+/// 接收网页发来的画中画指令
+final class Coordinator: NSObject, WKScriptMessageHandler {
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "pip",
+              let body = message.body as? [String: Any],
+              let cmd = body["cmd"] as? String else { return }
+
+        let anim = body["anim"] as? String
+        NSLog("DSPet: pip 指令 \(cmd) \(anim ?? "")")
+
+        switch cmd {
+        case "start": PiPManager.shared.start(file: anim)
+        case "play":  PiPManager.shared.play(file: anim ?? PiPManager.shared.currentFile)
+        case "stop":  PiPManager.shared.stop()
+        default:      break
+        }
+    }
 }
